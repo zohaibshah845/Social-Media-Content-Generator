@@ -48,7 +48,7 @@ API keys for OpenAI, Canva, Facebook, Instagram, and LinkedIn if you want to ena
 
 Clone the Repository
 
-git clone https://github.com/yourusername/social-content-generator.git
+git clone https://github.com/zohaibshah845/Social-Media-Content-Generator.git
 cd social-content-generator
 
 Backend Setup
