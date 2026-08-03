@@ -1,6 +1,11 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { auth } from '../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 
 const AuthContext = createContext();
 
@@ -9,11 +14,11 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const token = await user.getIdToken();
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        const token = await currentUser.getIdToken();
         localStorage.setItem('firebase_token', token);
-        setUser(user);
+        setUser(currentUser);
       } else {
         localStorage.removeItem('firebase_token');
         setUser(null);
@@ -23,15 +28,17 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  const login = (email, password) => {
+  const login = async (email, password) => {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
-  const signup = (email, password) => {
+  const signup = async (email, password) => {
     return createUserWithEmailAndPassword(auth, email, password);
   };
 
-  const logout = () => auth.signOut();
+  const logout = async () => {
+    return signOut(auth);
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, signup, logout }}>

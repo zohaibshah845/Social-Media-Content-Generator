@@ -53,16 +53,21 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setLoading(true);
     try {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -87,8 +92,8 @@ export default function Login() {
           style={styles.input}
           required
         />
-        <button type="submit" style={styles.button}>
-          Login
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? 'Logging in...' : 'Login'}
         </button>
       </form>
       <div style={styles.link}>
