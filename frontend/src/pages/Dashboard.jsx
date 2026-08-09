@@ -1,263 +1,311 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { generateContent, listPosts, createGraphic, schedulePost } from '../api/api';
-import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
-const styles = {
-  dashboard: {
-    maxWidth: '900px',
-    margin: '0 auto',
-    padding: '20px',
-    fontFamily: 'Arial, sans-serif',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottom: '2px solid #eee',
-    paddingBottom: '15px',
-    marginBottom: '25px',
-  },
-  logoutButton: {
-    padding: '8px 16px',
-    backgroundColor: '#dc3545',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    transition: 'background 0.2s',
-  },
-  panel: {
-    background: '#f8f9fa',
-    padding: '20px',
-    borderRadius: '8px',
-    marginBottom: '30px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-  },
-  panelTitle: {
-    marginTop: 0,
-    marginBottom: '15px',
-    color: '#333',
-  },
-  input: {
-    padding: '10px',
-    marginRight: '10px',
-    marginBottom: '10px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    fontSize: '14px',
-    flex: 1,
-    minWidth: '200px',
-  },
-  select: {
-    padding: '10px',
-    marginRight: '10px',
-    marginBottom: '10px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    fontSize: '14px',
-    minHeight: '80px',
-    minWidth: '150px',
-  },
-  button: {
-    padding: '10px 20px',
-    backgroundColor: '#28a745',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    transition: 'background 0.2s',
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-    cursor: 'not-allowed',
-  },
-  postsContainer: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '20px',
-  },
-  postCard: {
-    border: '1px solid #ddd',
-    borderRadius: '8px',
-    padding: '15px',
-    background: '#fff',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-    transition: 'box-shadow 0.2s',
-  },
-  postCaption: {
-    fontWeight: 'bold',
-    fontSize: '16px',
-    marginBottom: '8px',
-  },
-  postMeta: {
-    fontSize: '14px',
-    color: '#555',
-    marginBottom: '8px',
-  },
-  postImage: {
-    maxWidth: '100%',
-    height: 'auto',
-    borderRadius: '4px',
-    marginBottom: '10px',
-  },
-  graphicButton: {
-    padding: '6px 12px',
-    backgroundColor: '#6c757d',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    marginBottom: '10px',
-    transition: 'background 0.2s',
-  },
-  scheduleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    marginTop: '10px',
-  },
-  scheduleInput: {
-    padding: '6px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    fontSize: '13px',
-    flex: 1,
-  },
-  scheduleButton: {
-    padding: '6px 12px',
-    backgroundColor: '#007bff',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    transition: 'background 0.2s',
-  },
-  status: {
-    marginTop: '10px',
-    fontSize: '13px',
-    color: '#666',
-    fontStyle: 'italic',
-  },
-};
-
-export default function Dashboard() {
+const Dashboard = () => {
+  // ===== STATE =====
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const [themes, setThemes] = useState('');
-  const [platforms, setPlatforms] = useState(['facebook', 'instagram', 'linkedin']);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  useEffect(() => {
-    if (!user) navigate('/login');
-    else fetchPosts();
-  }, [user, navigate]);
-
-  const fetchPosts = async () => {
-    try {
-      const res = await listPosts();
-      setPosts(res.data.posts);
-    } catch (err) { console.error(err); }
+  // ===== TOAST =====
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'success' });
+    }, 3000);
   };
 
-  const handleGenerate = async () => {
+  // ===== GENERATE POSTS =====
+  const generatePosts = async () => {
     setLoading(true);
     try {
-      const themesArray = themes.split(',').map(t => t.trim());
-      const res = await generateContent({ themes: themesArray, platforms, count: 30 });
-      setPosts(res.data.posts);
-    } catch (err) { console.error(err); }
+      const response = await axios.post('http://localhost:8000/posts/generate-posts', {
+        days: 30,
+        categories: ['product', 'lifestyle', 'tips'],
+        platforms: ['facebook', 'instagram', 'linkedin']
+      }, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      setPosts(response.data.posts);
+      showToast('✅ 30 posts generated successfully!');
+    } catch (error) {
+      console.error('Error generating posts:', error);
+      showToast('❌ Failed to generate posts. Please try again.', 'error');
+    }
     setLoading(false);
   };
 
-  const handleGraphic = async (postId) => {
-    try {
-      await createGraphic(postId);
-      fetchPosts();
-    } catch (err) { console.error(err); }
+  // ===== EXPORT JSON =====
+  const exportPosts = () => {
+    if (posts.length === 0) {
+      showToast('⚠️ No posts to export. Generate posts first!', 'error');
+      return;
+    }
+    const data = posts.map(post => ({
+      day: post.day,
+      category: post.category,
+      title: post.title,
+      preview: post.preview,
+      time: post.time,
+      platforms: post.platforms.join(', '),
+      likes: post.likes,
+      comments: post.comments,
+      shares: post.shares
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `posts_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('📥 Posts exported successfully!');
   };
 
-  const handleSchedule = async (postId, scheduledTime) => {
-    try {
-      await schedulePost({ post_id: postId, platforms, scheduled_time: scheduledTime });
-      fetchPosts();
-    } catch (err) { console.error(err); }
+  // ===== EXPORT CSV =====
+  const exportCSV = () => {
+    if (posts.length === 0) {
+      showToast('⚠️ No posts to export. Generate posts first!', 'error');
+      return;
+    }
+    const headers = ['Day', 'Category', 'Title', 'Preview', 'Time', 'Platforms', 'Likes', 'Comments', 'Shares'];
+    const rows = posts.map(post => [
+      post.day,
+      post.category,
+      `"${post.title}"`,
+      `"${post.preview}"`,
+      post.time,
+      post.platforms.join('; '),
+      post.likes,
+      post.comments,
+      post.shares
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `posts_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('📊 CSV exported successfully!');
   };
 
+  // ===== COPY POSTS =====
+  const copyPosts = () => {
+    if (posts.length === 0) {
+      showToast('⚠️ No posts to copy. Generate posts first!', 'error');
+      return;
+    }
+    const text = posts.map(post => 
+      `Day ${post.day} - ${post.category}\n${post.title}\n${post.preview}\n${post.time}\n❤️ ${post.likes} 💬 ${post.comments} 🔄 ${post.shares}\n---`
+    ).join('\n');
+    navigator.clipboard.writeText(text);
+    showToast('📋 Posts copied to clipboard!');
+  };
+
+  // ===== CLEAR POSTS =====
+  const clearPosts = () => {
+    if (posts.length === 0) return;
+    if (window.confirm('Are you sure you want to delete all posts?')) {
+      setPosts([]);
+      showToast('🗑️ All posts cleared!');
+    }
+  };
+
+  // ===== GET STATS =====
+  const getStats = () => {
+    if (posts.length === 0) return null;
+    const totalLikes = posts.reduce((sum, p) => sum + p.likes, 0);
+    const totalComments = posts.reduce((sum, p) => sum + p.comments, 0);
+    const totalShares = posts.reduce((sum, p) => sum + p.shares, 0);
+    return { totalLikes, totalComments, totalShares, total: posts.length };
+  };
+
+  const stats = getStats();
+  const filteredPosts = filter === 'all' 
+    ? posts 
+    : posts.filter(post => post.category.toLowerCase() === filter);
+
+  // ===== RENDER =====
   return (
-    <div style={styles.dashboard}>
-      <div style={styles.header}>
-        <h2>📊 Dashboard – {user?.email}</h2>
-        <button style={styles.logoutButton} onClick={logout}>Logout</button>
-      </div>
+    <div className="dashboard-container">
+      {/* Toast */}
+      {toast.show && (
+        <div className={`toast ${toast.show ? 'show' : ''}`} style={{
+          background: toast.type === 'error' ? '#dc2626' : toast.type === 'warning' ? '#d97706' : '#0f172a'
+        }}>
+          <i className={`fas ${toast.type === 'error' ? 'fa-exclamation-circle' : toast.type === 'warning' ? 'fa-exclamation-triangle' : 'fa-check-circle'}`}></i>
+          {toast.message}
+        </div>
+      )}
 
-      <div style={styles.panel}>
-        <h3 style={styles.panelTitle}>Generate 30 Days of Content</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <input
-            style={styles.input}
-            value={themes}
-            onChange={(e) => setThemes(e.target.value)}
-            placeholder="e.g. product, lifestyle, tips"
-          />
-          <select
-            style={styles.select}
-            multiple
-            value={platforms}
-            onChange={(e) => setPlatforms([...e.target.selectedOptions].map(o => o.value))}
-          >
-            <option value="facebook">Facebook</option>
-            <option value="instagram">Instagram</option>
-            <option value="linkedin">LinkedIn</option>
-          </select>
-          <button
-            style={{ ...styles.button, ...(loading ? styles.buttonDisabled : {}) }}
-            onClick={handleGenerate}
+      {/* Header */}
+      <header className="header">
+        <div className="user-info">
+          <i className="fas fa-user-circle"></i>
+          <span>{user?.name || user?.email}</span>
+        </div>
+        <button className="logout-btn" onClick={logout}>
+          <i className="fas fa-sign-out-alt"></i> Logout
+        </button>
+      </header>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="stats-container">
+          <div className="stat-card">
+            <div className="stat-icon">📝</div>
+            <div className="stat-info">
+              <span className="stat-value">{stats.total}</span>
+              <span className="stat-label">Total Posts</span>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">❤️</div>
+            <div className="stat-info">
+              <span className="stat-value">{stats.totalLikes}</span>
+              <span className="stat-label">Total Likes</span>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">💬</div>
+            <div className="stat-info">
+              <span className="stat-value">{stats.totalComments}</span>
+              <span className="stat-label">Total Comments</span>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">🔄</div>
+            <div className="stat-info">
+              <span className="stat-value">{stats.totalShares}</span>
+              <span className="stat-label">Total Shares</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generator Card */}
+      <section className="generator-card">
+        <h2>Generate 30 Days of Content</h2>
+        <p className="subhead">e.g. product, lifestyle, tips</p>
+
+        <div className="options-row">
+          <div className="option-tag">
+            <i className="fas fa-tag"></i>
+            <span>Product</span> <small>·</small> 
+            <span>Lifestyle</span> <small>·</small> 
+            <span>Tips</span>
+          </div>
+          <div className="platform-icons">
+            <i className="fab fa-facebook"></i>
+            <i className="fab fa-instagram"></i>
+            <i className="fab fa-linkedin"></i>
+          </div>
+        </div>
+
+        <div className="btn-wrapper">
+          <button 
+            className="generate-btn" 
+            onClick={generatePosts}
             disabled={loading}
           >
+            <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-magic'}`}></i>
             {loading ? 'Generating...' : 'Generate Posts'}
           </button>
+          
+          {posts.length > 0 && (
+            <div className="export-btn-group">
+              <button className="export-btn" onClick={exportPosts} title="Export as JSON">
+                <i className="fas fa-file-export"></i> JSON
+              </button>
+              <button className="export-btn" onClick={exportCSV} title="Export as CSV">
+                <i className="fas fa-file-csv"></i> CSV
+              </button>
+              <button className="export-btn" onClick={copyPosts} title="Copy to clipboard">
+                <i className="fas fa-copy"></i> Copy
+              </button>
+              <button className="export-btn" onClick={clearPosts} title="Clear all posts" style={{ color: '#dc2626' }}>
+                <i className="fas fa-trash"></i> Clear
+              </button>
+            </div>
+          )}
         </div>
+      </section>
+
+      {/* Posts Section */}
+      <div className="posts-header">
+        <h3>Your Posts <span>· {posts.length} days</span></h3>
+        <span><i className="far fa-calendar-alt"></i> Day 1 – {posts.length}</span>
       </div>
 
-      <div>
-        <h3>Your Posts</h3>
-        <div style={styles.postsContainer}>
-          {posts.map(p => (
-            <div key={p.id} style={styles.postCard}>
-              <p style={styles.postCaption}>{p.caption}</p>
-              <p style={styles.postMeta}># {p.hashtags?.join(' #')}</p>
-              <p style={styles.postMeta}>Category: {p.category}</p>
-              {p.image_url ? (
-                <img src={p.image_url} alt="post visual" style={styles.postImage} />
-              ) : (
-                <button style={styles.graphicButton} onClick={() => handleGraphic(p.id)}>
-                  Generate Graphic
-                </button>
-              )}
-              <div style={styles.scheduleRow}>
-                <input
-                  type="datetime-local"
-                  style={styles.scheduleInput}
-                  onChange={(e) => { p.scheduledTime = e.target.value; }}
-                />
-                <button
-                  style={styles.scheduleButton}
-                  onClick={() => handleSchedule(p.id, p.scheduledTime)}
-                >
-                  Schedule
-                </button>
+      {/* Filters */}
+      <div className="filter-buttons">
+        {['all', 'product', 'lifestyle', 'tips'].map(cat => (
+          <button
+            key={cat}
+            className={`filter-btn ${filter === cat ? 'active' : ''}`}
+            onClick={() => setFilter(cat)}
+          >
+            {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+            {cat !== 'all' && (
+              <span className="filter-count">
+                {posts.filter(p => p.category.toLowerCase() === cat).length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Posts Grid */}
+      <div className="posts-grid">
+        {posts.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-newspaper"></i>
+            <p>No posts yet. Click "Generate Posts" to create 30 days of content!</p>
+          </div>
+        ) : filteredPosts.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-filter"></i>
+            <p>No posts found for "{filter}" category.</p>
+          </div>
+        ) : (
+          filteredPosts.map((post) => (
+            <div key={post.day} className="post-card" data-category={post.category.toLowerCase()}>
+              <span className="post-badge" style={{
+                background: post.category === 'Product' ? '#dbeafe' : 
+                           post.category === 'Lifestyle' ? '#d1fae5' : '#fef3c7',
+                color: post.category === 'Product' ? '#1e40af' : 
+                       post.category === 'Lifestyle' ? '#065f46' : '#92400e'
+              }}>
+                {post.category} · Day {post.day}
+              </span>
+              <div className="post-title">{post.title}</div>
+              <div className="post-preview">{post.preview}</div>
+              <div className="post-meta">
+                <span><i className="far fa-clock"></i> {post.time}</span>
+                <div className="post-platforms">
+                  {post.platforms.map(p => (
+                    <i key={p} className={`fab fa-${p}`}></i>
+                  ))}
+                </div>
               </div>
-              <p style={styles.status}>Status: {p.status}</p>
+              <div className="post-engagement">
+                <span>❤️ {post.likes}</span>
+                <span>💬 {post.comments}</span>
+                <span><i className="fas fa-share-alt"></i> {post.shares}</span>
+              </div>
             </div>
-          ))}
-        </div>
+          ))
+        )}
       </div>
     </div>
   );
-}
+};
+
+export default Dashboard;

@@ -1,100 +1,106 @@
-from fastapi import APIRouter, Depends, HTTPException
-from app.schemas import UserCreate, UserLogin, PostGenerateRequest, ScheduleRequest
-from app.auth import get_current_user, verify_token
-from app.services import openai, canva, social, firestore as fs
-from firebase_admin import auth as firebase_auth
-import asyncio
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from typing import List, Optional
 from datetime import datetime
+import random
+from .auth import oauth2_scheme, get_current_user
 
 router = APIRouter()
 
-# ----------------- Auth -----------------
-@router.post("/signup")
-async def signup(user: UserCreate):
-    try:
-        # Create Firebase user
-        user_record = firebase_auth.create_user(
-            email=user.email,
-            password=user.password
-        )
-        # Store additional user data in Firestore
-        fs.db.collection('users').document(user_record.uid).set({
-            "email": user.email,
-            "brand_name": user.brand_name,
-            "brand_colors": user.brand_colors,
-            "created_at": datetime.utcnow()
-        })
-        return {"uid": user_record.uid, "message": "User created"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+class PostRequest(BaseModel):
+    days: int = 30
+    categories: List[str] = ["product", "lifestyle", "tips"]
+    platforms: List[str] = ["facebook", "instagram", "linkedin"]
 
-@router.post("/login")
-async def login(user: UserLogin):
-    # Firebase client SDK handles login on frontend; we just accept token via verify_token later.
-    # We'll keep a simple endpoint to get custom token if needed.
-    # For this demo, we'll return a message to use Firebase client SDK for login.
-    return {"message": "Use Firebase client SDK to sign in, then send ID token in Authorization header"}
+class PostResponse(BaseModel):
+    day: int
+    category: str
+    title: str
+    preview: str
+    time: str
+    platforms: List[str]
+    likes: int
+    comments: int
+    shares: int
 
-# ----------------- Content Generation -----------------
-@router.post("/generate")
-async def generate_posts(request: PostGenerateRequest, current_user = Depends(get_current_user)):
-    uid = current_user['uid']
-    brand = current_user['brand_name']
-    colors = current_user['brand_colors']
-    all_posts = []
-    for platform in request.platforms:
-        posts = await openai.generate_posts(brand, colors, request.themes, platform, request.count)
-        for p in posts:
-            post_data = {
-                "caption": p['caption'],
-                "hashtags": p['hashtags'],
-                "category": p['category'],
-                "platform": platform,
-                "status": "draft",
-                "image_url": None,
-                "scheduled_time": None
-            }
-            post_id = fs.create_post(uid, post_data)
-            all_posts.append({**post_data, "id": post_id})
-    return {"posts": all_posts}
+# Post templates
+POST_TEMPLATES = {
+    "product": [
+        {"title": "🚀 Product Spotlight", "preview": "Discover how our new feature saves teams 2 hours daily. Try it now!"},
+        {"title": "📦 New Integration", "preview": "We just added Slack + Teams support. Work smarter, not harder."},
+        {"title": "📊 Analytics Insight", "preview": "The one metric that actually predicts growth."},
+        {"title": "📈 Growth Strategy", "preview": "The simple framework that helped us 2x our user base."},
+        {"title": "✨ Feature Highlight", "preview": "Our most requested feature is finally here. Check it out!"},
+        {"title": "🔔 Product Alert", "preview": "New update rolling out next week. Here's what's changing."},
+    ],
+    "lifestyle": [
+        {"title": "🧘 Morning Routine", "preview": "5 simple habits that transformed my productivity and focus."},
+        {"title": "🌿 Work-Life Balance", "preview": "Setting boundaries isn't selfish. Here's how I protect my time."},
+        {"title": "🎯 Q3 Goals", "preview": "How to set achievable goals that actually get done."},
+        {"title": "🌱 Daily Habits", "preview": "Small changes that lead to big results over time."},
+        {"title": "🧠 Mental Wellness", "preview": "Taking care of your mind is just as important as your body."},
+    ],
+    "tips": [
+        {"title": "💡 Quick Win", "preview": "This keyboard shortcut alone saves me 30 minutes every day."},
+        {"title": "🔧 Automation Hack", "preview": "Automate 3 repetitive tasks and reclaim your week."},
+        {"title": "🤝 Team Sync", "preview": "5 tips for better remote collaboration and fewer meetings."},
+        {"title": "⚡ Productivity Tip", "preview": "Work in 90-minute focused sprints for maximum output."},
+    ]
+}
 
-@router.post("/graphics/{post_id}")
-async def generate_graphic(post_id: str, current_user = Depends(get_current_user)):
-    uid = current_user['uid']
-    post = fs.get_post(uid, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    # Generate image using Canva
-    image_url = await canva.create_graphic(post['caption'], current_user['brand_colors'])
-    fs.update_post(uid, post_id, {"image_url": image_url})
-    return {"image_url": image_url}
-
-@router.post("/schedule")
-async def schedule_posts(request: ScheduleRequest, current_user = Depends(get_current_user)):
-    uid = current_user['uid']
-    post = fs.get_post(uid, request.post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    results = []
-    for platform in request.platforms:
-        if platform == "facebook":
-            res = await social.post_to_facebook("page_id", post['caption'], post['image_url'], request.scheduled_time)
-        elif platform == "instagram":
-            res = await social.post_to_instagram("account_id", post['caption'], post['image_url'], request.scheduled_time)
-        elif platform == "linkedin":
-            res = await social.post_to_linkedin(post['caption'], post['image_url'], request.scheduled_time)
-        else:
-            continue
-        results.append({platform: res})
-    # Update post status and schedule time
-    fs.update_post(uid, request.post_id, {
-        "status": "scheduled",
-        "scheduled_time": request.scheduled_time,
-        "platforms": request.platforms
-    })
-    return {"scheduled": results}
+@router.post("/generate-posts")
+async def generate_posts(
+    request: PostRequest,
+    current_user = Depends(get_current_user)
+):
+    """Generate 30 days of posts for the authenticated user"""
+    posts = []
+    platforms = ["facebook", "instagram", "linkedin"]
+    
+    for i in range(1, request.days + 1):
+        # Select category
+        category = random.choice(request.categories)
+        templates = POST_TEMPLATES.get(category, POST_TEMPLATES["tips"])
+        template = random.choice(templates)
+        
+        # Random time
+        hour = random.randint(1, 12)
+        minute = random.randint(0, 59)
+        ampm = "AM" if random.random() > 0.5 else "PM"
+        time_str = f"{hour}:{str(minute).zfill(2)} {ampm}"
+        
+        # Random platforms
+        num_platforms = random.randint(1, 3)
+        used_platforms = random.sample(platforms, num_platforms)
+        
+        # Engagement metrics
+        likes = random.randint(10, 210)
+        comments = random.randint(1, 30)
+        shares = random.randint(1, 20)
+        
+        posts.append(PostResponse(
+            day=i,
+            category=category.capitalize(),
+            title=template["title"],
+            preview=template["preview"],
+            time=time_str,
+            platforms=used_platforms,
+            likes=likes,
+            comments=comments,
+            shares=shares
+        ))
+    
+    return {
+        "posts": posts,
+        "total": len(posts),
+        "user": current_user["email"]
+    }
 
 @router.get("/posts")
-async def list_posts(current_user = Depends(get_current_user)):
-    posts = fs.get_user_posts(current_user['uid'])
-    return {"posts": posts}
+async def get_posts(current_user = Depends(get_current_user)):
+    """Get saved posts for the current user"""
+    # In production, fetch from database
+    return {
+        "posts": [],  # Empty for now
+        "message": "No saved posts found"
+    }

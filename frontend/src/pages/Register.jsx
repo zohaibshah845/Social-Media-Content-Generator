@@ -2,20 +2,33 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 
-const Login = () => {
+const Register = () => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await register(email, password, name);
     if (result.success) {
       navigate('/dashboard');
     } else {
@@ -27,12 +40,23 @@ const Login = () => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>Welcome Back</h2>
-        <p className="auth-subtitle">Log in to your account</p>
+        <h2>Create Account</h2>
+        <p className="auth-subtitle">Start generating content today</p>
 
         {error && <div className="auth-error">{error}</div>}
 
         <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Full Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="John Doe"
+              required
+            />
+          </div>
+
           <div className="form-group">
             <label>Email</label>
             <input
@@ -55,17 +79,28 @@ const Login = () => {
             />
           </div>
 
+          <div className="form-group">
+            <label>Confirm Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
           <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? 'Logging in...' : 'Log In'}
+            {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
 
         <p className="auth-footer">
-          Don't have an account? <Link to="/register">Sign up</Link>
+          Already have an account? <Link to="/login">Log in</Link>
         </p>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default Register;

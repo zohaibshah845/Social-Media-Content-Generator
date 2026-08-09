@@ -1,89 +1,157 @@
-# pyright: reportMissingImports=false
-import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
+from typing import Optional
+import firebase_admin
+from firebase_admin import auth, credentials
+import os
 
-# ---------- Configuration (use environment variables in production) ----------
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+router = APIRouter()
 
-# ---------- Password hashing context ----------
+# Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# ---------- OAuth2 scheme (token URL must match your login endpoint) ----------
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")   # Adjust if your login endpoint is different
+# JWT settings
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# ---------- Pydantic models for token ----------
+# Firebase Admin SDK (for production auth)
+# cred = credentials.Certificate("firebase-service-account.json")
+# firebase_admin.initialize_app(cred)
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+    user: dict
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
+class UserInDB(BaseModel):
+    email: str
+    name: Optional[str] = None
+    created_at: datetime
 
-# ---------- Password helpers ----------
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+# Mock user database (replace with real DB)
+users_db = {}
+
+def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password: str) -> str:
+def get_password_hash(password):
     return pwd_context.hash(password)
 
-# ---------- JWT helpers ----------
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def verify_token(token: str) -> TokenData:
-    """
-    Decode and validate the JWT token.
-    Returns TokenData (username) or raises HTTPException.
-    """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+@router.post("/register")
+async def register(user: UserCreate):
+    # Check if user exists
+    if user.email in users_db:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create user (in production, save to database)
+    hashed_password = get_password_hash(user.password)
+    users_db[user.email] = {
+        "email": user.email,
+        "password": hashed_password,
+        "name": user.name or user.email.split('@')[0],
+        "created_at": datetime.utcnow()
+    }
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "email": user.email,
+            "name": user.name or user.email.split('@')[0]
+        }
+    }
+
+@router.post("/login")
+async def login(user: UserLogin):
+    # Check if user exists
+    if user.email not in users_db:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
+    
+    db_user = users_db[user.email]
+    
+    # Verify password
+    if not verify_password(user.password, db_user["password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "email": user.email,
+            "name": db_user["name"]
+        }
+    }
+
+@router.post("/logout")
+async def logout():
+    # With JWT, logout is handled client-side by removing the token
+    return {"message": "Logged out successfully"}
+
+@router.get("/me")
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
+        email = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
     except JWTError:
-        raise credentials_exception
-    return token_data
-
-# ---------- Dependency: get current user ----------
-# This assumes you have a User model/CRUD. Adjust the import and logic to match your project.
-# For demonstration, we'll use a dummy user retrieval.
-# Replace this with actual database lookup.
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    """
-    Extract and validate the token, then return the user object.
-    """
-    token_data = verify_token(token)
-    # ---- Replace the following dummy logic with your real database fetch ----
-    # Example: user = await get_user_by_username(token_data.username)
-    # If user is None, raise HTTPException(404, "User not found")
-    # Return the user object (or a dict) that your routes expect.
-    user = {"username": token_data.username}   # dummy
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-# Optional: if you have a real user model, you can use this signature:
-# async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
-#     ...
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+    
+    if email not in users_db:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    
+    db_user = users_db[email]
+    return {
+        "email": db_user["email"],
+        "name": db_user["name"],
+        "created_at": db_user["created_at"]
+    }
