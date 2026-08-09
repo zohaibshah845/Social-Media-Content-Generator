@@ -35,11 +35,16 @@ export const AuthProvider = ({ children }) => {
   // ===== REGISTER =====
   const register = async (name, email, password) => {
     try {
+      console.log('📤 Registering:', { name, email });
+      
       const response = await axios.post(`${API_URL}/auth/register`, {
-        name,
-        email,
-        password
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password: password
       });
+      
+      console.log('✅ Registration response:', response.data);
+      
       const { access_token, user } = response.data;
       setToken(access_token);
       localStorage.setItem('token', access_token);
@@ -47,6 +52,8 @@ export const AuthProvider = ({ children }) => {
       setUser(user);
       return { success: true };
     } catch (error) {
+      console.error('❌ Registration error:', error);
+      console.error('❌ Response data:', error.response?.data);
       return { 
         success: false, 
         error: error.response?.data?.detail || 'Registration failed' 
@@ -57,10 +64,15 @@ export const AuthProvider = ({ children }) => {
   // ===== LOGIN =====
   const login = async (email, password) => {
     try {
+      console.log('📤 Logging in:', { email });
+      
       const response = await axios.post(`${API_URL}/auth/login`, {
-        email,
-        password
+        email: email.trim().toLowerCase(),
+        password: password
       });
+      
+      console.log('✅ Login response:', response.data);
+      
       const { access_token, user } = response.data;
       setToken(access_token);
       localStorage.setItem('token', access_token);
@@ -68,6 +80,8 @@ export const AuthProvider = ({ children }) => {
       setUser(user);
       return { success: true };
     } catch (error) {
+      console.error('❌ Login error:', error);
+      console.error('❌ Response data:', error.response?.data);
       return { 
         success: false, 
         error: error.response?.data?.detail || 'Invalid credentials' 
@@ -81,6 +95,7 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
+    console.log('👋 Logged out');
   };
 
   const value = {

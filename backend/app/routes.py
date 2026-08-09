@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
 import random
-from .auth import oauth2_scheme, get_current_user
+from datetime import datetime
+from .auth import get_current_user
 
 router = APIRouter()
 
@@ -78,17 +78,17 @@ async def generate_posts(
         comments = random.randint(1, 30)
         shares = random.randint(1, 20)
         
-        posts.append(PostResponse(
-            day=i,
-            category=category.capitalize(),
-            title=template["title"],
-            preview=template["preview"],
-            time=time_str,
-            platforms=used_platforms,
-            likes=likes,
-            comments=comments,
-            shares=shares
-        ))
+        posts.append({
+            "day": i,
+            "category": category.capitalize(),
+            "title": template["title"],
+            "preview": template["preview"],
+            "time": time_str,
+            "platforms": used_platforms,
+            "likes": likes,
+            "comments": comments,
+            "shares": shares
+        })
     
     return {
         "posts": posts,
@@ -99,8 +99,7 @@ async def generate_posts(
 @router.get("/posts")
 async def get_posts(current_user = Depends(get_current_user)):
     """Get saved posts for the current user"""
-    # In production, fetch from database
     return {
-        "posts": [],  # Empty for now
+        "posts": [],
         "message": "No saved posts found"
     }

@@ -1,33 +1,25 @@
+# backend/app/schemas.py
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import Optional, List
 from datetime import datetime
 
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-    brand_name: str
-    brand_colors: Optional[str] = "#000000,#FFFFFF"
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class PostGenerateRequest(BaseModel):
-    themes: List[str]
-    platforms: List[str]  # e.g. ["facebook", "instagram", "linkedin"]
-    count: int = 30
+class PostRequest(BaseModel):
+    days: int = 30
+    categories: List[str] = ["product", "lifestyle", "tips"]
+    platforms: List[str] = ["facebook", "instagram", "linkedin"]
 
 class PostResponse(BaseModel):
-    id: str
-    caption: str
-    hashtags: List[str]
+    day: int
     category: str
-    image_url: Optional[str]
-    scheduled_time: Optional[datetime]
+    title: str
+    preview: str
+    time: str
     platforms: List[str]
-    status: str  # draft, scheduled, published, failed
+    likes: int
+    comments: int
+    shares: int
 
-class ScheduleRequest(BaseModel):
-    post_id: str
-    platforms: List[str]
-    scheduled_time: datetime
+class PostsResponse(BaseModel):
+    posts: List[PostResponse]
+    total: int
+    user: str
